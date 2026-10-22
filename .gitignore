@@ -1,0 +1,18 @@
+# Python environment
+.venv/
+__pycache__/
+*.pyc
+
+# Downloaded models
+*.pt
+*.pth
+
+# Datasets
+data/
+datasets/
+
+# External benchmark repository
+benchmark/
+
+# Experiment outputs
+outputs/
