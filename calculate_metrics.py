@@ -47,8 +47,7 @@ def evaluate_prompt(prompt_type):
         "unknown_mean": scores[labels == 0].mean()
     }
 
-
-for prompt_type in ["scientific", "common"]:
+for prompt_type in ["scientific", "common", "combined"]:
     result = evaluate_prompt(prompt_type)
 
     print(f"\n--- {prompt_type.upper()} PROMPTS ---")

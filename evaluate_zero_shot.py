@@ -15,7 +15,7 @@ SPLIT_PATH = Path(
 )
 
 DEVELOPMENT_PATH = Path("outputs/aves_1hop_development.csv")
-PROMPT_TYPE = "scientific"  # Change to "common" for second run
+PROMPT_TYPE = "combined"  # Change to "common" for second run
 
 # 2. Load annotations and official split
 with open(ANNOTATIONS_PATH, encoding="utf-8") as f:
@@ -108,10 +108,17 @@ elif PROMPT_TYPE == "common":
         f"a photo of {common_names[category_id]}"
         for category_id in known_ids_ordered
     ]
+elif PROMPT_TYPE == "combined":
+    prompts = [
+        f"a photo of {common_names[category_id]} "
+        f"({category_names[category_id]})"
+        for category_id in known_ids_ordered
+    ]
 
 else:
-    raise ValueError("PROMPT_TYPE must be scientific or common")
-
+    raise ValueError(
+        "PROMPT_TYPE must be scientific, common, or combined"
+    )
 print("Prompt type:", PROMPT_TYPE)
 print("Example prompt:", prompts[0])
 
