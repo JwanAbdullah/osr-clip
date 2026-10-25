@@ -1,24 +1,40 @@
 
 import json
+import csv
 from pathlib import Path
 
+import torch
+import clip
+from PIL import Image
+from torch.utils.data import Dataset, DataLoader
+
+
 # 1. Configuration
-DATASET_PATH = Path(r"D:\datasets\inat2021\val")
 
-ANNOTATIONS_PATH = Path(
-    r"D:\datasets\inat2021\val.json"
-)
+ANNOTATIONS_PATH = Path(r"D:\datasets\inat2021\val.json")
 
-SPLIT_PATH = Path(
-    "benchmark/datasets/inat21_osr_splits/"
-    "inat21-osr-aves-id-1hop.json"
-)
-
-EVALUATION_PATH = Path("outputs/aves_1hop_test.csv")
+HOP = 7 #keep changing
 PROMPT_TYPE = "combined"
 EVALUATION_STAGE = "test"
 
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+BATCH_SIZE = 32
+
+SPLIT_PATH = Path(
+    f"benchmark/datasets/inat21_osr_splits/"
+    f"inat21-osr-aves-id-{HOP}hop.json"
+)
+
+EVALUATION_PATH = Path(
+    f"outputs/aves_{HOP}hop_test.csv"
+)
+
+OUTPUT_PATH = Path("outputs")
+OUTPUT_PATH.mkdir(exist_ok=True)
+
+
 # 2. Load annotations and official split
+
 with open(ANNOTATIONS_PATH, encoding="utf-8") as f:
     annotations = json.load(f)
 
@@ -28,57 +44,12 @@ with open(SPLIT_PATH, encoding="utf-8") as f:
 known_ids = set(split["train_categories"])
 unknown_ids = set(split["test_categories"])
 
-# 3. Map image records to species IDs
-image_categories = {
-    annotation["image_id"]: annotation["category_id"]
-    for annotation in annotations["annotations"]
-}
-
-# 4. Collect known and unknown images
-known_images = []
-unknown_images = []
-
-for image_info in annotations["images"]:
-    image_id = image_info["id"]
-    category_id = image_categories.get(image_id)
-
-    if category_id is None:
-        continue
-
-    image_path = DATASET_PATH.parent / image_info["file_name"]
-
-    if category_id in known_ids:
-        known_images.append((image_path, category_id))
-
-    elif category_id in unknown_ids:
-        unknown_images.append((image_path, category_id))
-
-# 5. Display dataset summary
+print(f"Evaluating Aves {HOP}-hop")
 print("Known species:", len(known_ids))
 print("Unknown species:", len(unknown_ids))
 
-print("Known images:", len(known_images))
-print("Unknown images:", len(unknown_images))
 
-print("\nFirst known image:", known_images[0] if known_images else "None")
-print("First unknown image:", unknown_images[0] if unknown_images else "None")
-
-print("\nFirst known image exists:",
-      known_images[0][0].exists() if known_images else False)
-
-print("First unknown image exists:",
-      unknown_images[0][0].exists() if unknown_images else False)
-
-
-# 6. load CLIP and prepare known-species prompts
-
-import torch
-import clip
-from PIL import Image
-from torch.utils.data import Dataset, DataLoader
-
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 32
+# 3. Load CLIP and prepare known-species prompts
 
 model, preprocess = clip.load("ViT-B/16", device=DEVICE)
 model.eval()
@@ -109,6 +80,7 @@ elif PROMPT_TYPE == "common":
         f"a photo of {common_names[category_id]}"
         for category_id in known_ids_ordered
     ]
+
 elif PROMPT_TYPE == "combined":
     prompts = [
         f"a photo of {common_names[category_id]} "
@@ -120,6 +92,7 @@ else:
     raise ValueError(
         "PROMPT_TYPE must be scientific, common, or combined"
     )
+
 print("Prompt type:", PROMPT_TYPE)
 print("Example prompt:", prompts[0])
 
@@ -133,7 +106,7 @@ with torch.inference_mode():
 print("Text embeddings:", text_features.shape)
 
 
-# 7. Prepare images for batch processing
+# 4. Prepare images for batch processing
 
 class BirdDataset(Dataset):
     def __init__(self, image_records, preprocess):
@@ -152,22 +125,7 @@ class BirdDataset(Dataset):
         return image_tensor, category_id, str(image_path)
 
 
-known_loader = DataLoader(
-    BirdDataset(known_images, preprocess),
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=0
-)
-
-unknown_loader = DataLoader(
-    BirdDataset(unknown_images, preprocess),
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=0
-)
-
-
-# 8. Run CLIP on image batches
+# 5. Run CLIP on image batches
 
 def evaluate_images(loader, label):
     results = []
@@ -196,18 +154,15 @@ def evaluate_images(loader, label):
                 })
 
             if (batch_number + 1) % 20 == 0:
-                print(f"{label}: processed {(batch_number + 1) * BATCH_SIZE} images")
+                print(
+                    f"{label}: processed "
+                    f"{(batch_number + 1) * BATCH_SIZE} images"
+                )
 
     return results
 
 
-
-# 9. Load development images
-
-
-# 9. Load held-out test images
-
-import csv
+# 6. Load held-out test images
 
 test_known = []
 test_unknown = []
@@ -227,8 +182,18 @@ with open(EVALUATION_PATH, newline="", encoding="utf-8") as f:
         elif row["ground_truth"] == "unknown":
             test_unknown.append(record)
 
-print("\nTest known images:", len(test_known))
-print("Test unknown images:", len(test_unknown))
+print("\nKnown test images:", len(test_known))
+print("Unknown test images:", len(test_unknown))
+
+assert all(
+    category_id in known_ids
+    for _, category_id in test_known
+)
+
+assert all(
+    category_id in unknown_ids
+    for _, category_id in test_unknown
+)
 
 known_test_loader = DataLoader(
     BirdDataset(test_known, preprocess),
@@ -244,20 +209,22 @@ unknown_test_loader = DataLoader(
     num_workers=0
 )
 
+
+# 7. Evaluate known and unknown images
+
 print("\nEvaluating known test images...")
 known_results = evaluate_images(known_test_loader, "known")
 
 print("\nEvaluating unknown test images...")
 unknown_results = evaluate_images(unknown_test_loader, "unknown")
 
-# 10. Save development results
 
-OUTPUT_PATH = Path("outputs")
-OUTPUT_PATH.mkdir(exist_ok=True)
+# 8. Save held-out test results
 
 all_results = known_results + unknown_results
 
-filename = f"aves_1hop_{PROMPT_TYPE}_{EVALUATION_STAGE}_results.csv"
+filename = f"aves_{HOP}hop_{PROMPT_TYPE}_{EVALUATION_STAGE}_results.csv"
+
 with open(OUTPUT_PATH / filename, "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=all_results[0].keys())
     writer.writeheader()
