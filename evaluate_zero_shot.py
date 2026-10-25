@@ -14,6 +14,9 @@ SPLIT_PATH = Path(
     "inat21-osr-aves-id-1hop.json"
 )
 
+DEVELOPMENT_PATH = Path("outputs/aves_1hop_development.csv")
+PROMPT_TYPE = "scientific"  # Change to "common" for second run
+
 # 2. Load annotations and official split
 with open(ANNOTATIONS_PATH, encoding="utf-8") as f:
     annotations = json.load(f)
@@ -82,19 +85,35 @@ model.eval()
 for parameter in model.parameters():
     parameter.requires_grad = False
 
+category_names = {
+    category["id"]: category["name"]
+    for category in annotations["categories"]
+}
+
 common_names = {
-    category["id"]: (
-        category.get("common_name") or category["name"]
-    )
+    category["id"]: category.get("common_name") or category["name"]
     for category in annotations["categories"]
 }
 
 known_ids_ordered = sorted(known_ids)
 
-prompts = [
-    f"a photo of {common_names[category_id]}"
-    for category_id in known_ids_ordered
-]
+if PROMPT_TYPE == "scientific":
+    prompts = [
+        f"a photo of {category_names[category_id]}"
+        for category_id in known_ids_ordered
+    ]
+
+elif PROMPT_TYPE == "common":
+    prompts = [
+        f"a photo of {common_names[category_id]}"
+        for category_id in known_ids_ordered
+    ]
+
+else:
+    raise ValueError("PROMPT_TYPE must be scientific or common")
+
+print("Prompt type:", PROMPT_TYPE)
+print("Example prompt:", prompts[0])
 
 with torch.inference_mode():
     tokens = clip.tokenize(prompts).to(DEVICE)
@@ -174,46 +193,67 @@ def evaluate_images(loader, label):
     return results
 
 
-# 9. a small pilot first
 
-PILOT_SIZE = 100
-
-known_pilot = DataLoader(
-    BirdDataset(known_images[:PILOT_SIZE], preprocess),
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=0
-)
-
-unknown_pilot = DataLoader(
-    BirdDataset(unknown_images[:PILOT_SIZE], preprocess),
-    batch_size=BATCH_SIZE,
-    shuffle=False,
-    num_workers=0
-)
-
-print("\nRunning known-image pilot")
-known_results = evaluate_images(known_pilot, "known")
-
-print("Running unknown-image pilot")
-unknown_results = evaluate_images(unknown_pilot, "unknown")
-
-
-# 10. Save results
+# 9. Load development images
 
 import csv
+
+development_known = []
+development_unknown = []
+
+with open(DEVELOPMENT_PATH, newline="", encoding="utf-8") as f:
+    reader = csv.DictReader(f)
+
+    for row in reader:
+        record = (
+            Path(row["image_path"]),
+            int(row["category_id"])
+        )
+
+        if row["ground_truth"] == "known":
+            development_known.append(record)
+
+        elif row["ground_truth"] == "unknown":
+            development_unknown.append(record)
+
+print("\nDevelopment known images:", len(development_known))
+print("Development unknown images:", len(development_unknown))
+
+known_dev_loader = DataLoader(
+    BirdDataset(development_known, preprocess),
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    num_workers=0
+)
+
+unknown_dev_loader = DataLoader(
+    BirdDataset(development_unknown, preprocess),
+    batch_size=BATCH_SIZE,
+    shuffle=False,
+    num_workers=0
+)
+
+print("\nEvaluating known development images...")
+known_results = evaluate_images(known_dev_loader, "known")
+
+print("\nEvaluating unknown development images...")
+unknown_results = evaluate_images(unknown_dev_loader, "unknown")
+
+# 10. Save development results
 
 OUTPUT_PATH = Path("outputs")
 OUTPUT_PATH.mkdir(exist_ok=True)
 
 all_results = known_results + unknown_results
 
-with open(OUTPUT_PATH / "aves_1hop_pilot.csv", "w", newline="", encoding="utf-8") as f:
+filename = f"aves_1hop_{PROMPT_TYPE}_development_results.csv"
+
+with open(OUTPUT_PATH / filename, "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=all_results[0].keys())
     writer.writeheader()
     writer.writerows(all_results)
 
-print("\nEvaluation complete")
+print("\nEvaluation complete!")
 print("Known images evaluated:", len(known_results))
 print("Unknown images evaluated:", len(unknown_results))
-print("Results are in /aves_1hop_common_names_pilot.csv")
+print("Saved:", OUTPUT_PATH / filename)
