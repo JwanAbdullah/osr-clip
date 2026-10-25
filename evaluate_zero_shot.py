@@ -82,15 +82,17 @@ model.eval()
 for parameter in model.parameters():
     parameter.requires_grad = False
 
-category_names = {
-    category["id"]: category["name"]
+common_names = {
+    category["id"]: (
+        category.get("common_name") or category["name"]
+    )
     for category in annotations["categories"]
 }
 
 known_ids_ordered = sorted(known_ids)
 
 prompts = [
-    f"a photo of {category_names[category_id]}"
+    f"a photo of {common_names[category_id]}"
     for category_id in known_ids_ordered
 ]
 
@@ -214,4 +216,4 @@ with open(OUTPUT_PATH / "aves_1hop_pilot.csv", "w", newline="", encoding="utf-8"
 print("\nEvaluation complete")
 print("Known images evaluated:", len(known_results))
 print("Unknown images evaluated:", len(unknown_results))
-print("Results are in /aves_1hop_pilot.csv")
+print("Results are in /aves_1hop_common_names_pilot.csv")
