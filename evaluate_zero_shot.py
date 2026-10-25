@@ -14,8 +14,9 @@ SPLIT_PATH = Path(
     "inat21-osr-aves-id-1hop.json"
 )
 
-DEVELOPMENT_PATH = Path("outputs/aves_1hop_development.csv")
-PROMPT_TYPE = "combined"  # Change to "common" for second run
+EVALUATION_PATH = Path("outputs/aves_1hop_test.csv")
+PROMPT_TYPE = "combined"
+EVALUATION_STAGE = "test"
 
 # 2. Load annotations and official split
 with open(ANNOTATIONS_PATH, encoding="utf-8") as f:
@@ -203,12 +204,15 @@ def evaluate_images(loader, label):
 
 # 9. Load development images
 
+
+# 9. Load held-out test images
+
 import csv
 
-development_known = []
-development_unknown = []
+test_known = []
+test_unknown = []
 
-with open(DEVELOPMENT_PATH, newline="", encoding="utf-8") as f:
+with open(EVALUATION_PATH, newline="", encoding="utf-8") as f:
     reader = csv.DictReader(f)
 
     for row in reader:
@@ -218,33 +222,33 @@ with open(DEVELOPMENT_PATH, newline="", encoding="utf-8") as f:
         )
 
         if row["ground_truth"] == "known":
-            development_known.append(record)
+            test_known.append(record)
 
         elif row["ground_truth"] == "unknown":
-            development_unknown.append(record)
+            test_unknown.append(record)
 
-print("\nDevelopment known images:", len(development_known))
-print("Development unknown images:", len(development_unknown))
+print("\nTest known images:", len(test_known))
+print("Test unknown images:", len(test_unknown))
 
-known_dev_loader = DataLoader(
-    BirdDataset(development_known, preprocess),
+known_test_loader = DataLoader(
+    BirdDataset(test_known, preprocess),
     batch_size=BATCH_SIZE,
     shuffle=False,
     num_workers=0
 )
 
-unknown_dev_loader = DataLoader(
-    BirdDataset(development_unknown, preprocess),
+unknown_test_loader = DataLoader(
+    BirdDataset(test_unknown, preprocess),
     batch_size=BATCH_SIZE,
     shuffle=False,
     num_workers=0
 )
 
-print("\nEvaluating known development images...")
-known_results = evaluate_images(known_dev_loader, "known")
+print("\nEvaluating known test images...")
+known_results = evaluate_images(known_test_loader, "known")
 
-print("\nEvaluating unknown development images...")
-unknown_results = evaluate_images(unknown_dev_loader, "unknown")
+print("\nEvaluating unknown test images...")
+unknown_results = evaluate_images(unknown_test_loader, "unknown")
 
 # 10. Save development results
 
@@ -253,8 +257,7 @@ OUTPUT_PATH.mkdir(exist_ok=True)
 
 all_results = known_results + unknown_results
 
-filename = f"aves_1hop_{PROMPT_TYPE}_development_results.csv"
-
+filename = f"aves_1hop_{PROMPT_TYPE}_{EVALUATION_STAGE}_results.csv"
 with open(OUTPUT_PATH / filename, "w", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=all_results[0].keys())
     writer.writeheader()
