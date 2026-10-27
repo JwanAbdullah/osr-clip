@@ -87,3 +87,89 @@ for hop in range(1, 8):
         f"Known: {result['known_count']} | "
         f"Unknown: {result['unknown_count']}"
     )
+
+
+
+# 4. Plot AUROC and FPR95 across taxonomic hops
+
+import matplotlib.pyplot as plt
+
+hops = []
+auroc_values = []
+fpr95_values = []
+
+for hop in range(1, 8):
+    filename = OUTPUT_PATH / f"aves_{hop}hop_combined_test_results.csv"
+
+    result = calculate_metrics(filename)
+
+    hops.append(hop)
+    auroc_values.append(result["auroc"])
+    fpr95_values.append(result["fpr95"] * 100)
+
+
+# AUROC graph
+
+plt.figure(figsize=(9, 5))
+
+plt.plot(
+    hops, auroc_values,
+    color="#80B5EF",
+    marker="o",
+    linewidth=2.5,
+    markersize=7
+)
+
+plt.xlabel("Taxonomic Distance (Hops)", fontsize=12)
+plt.ylabel("AUROC", fontsize=12)
+plt.title("AUROC Across Taxonomic Distances", fontsize=14, fontweight="bold")
+
+plt.xticks(hops)
+plt.ylim(0, 1.05)
+plt.grid(axis="y", alpha=0.15)
+
+plt.gca().spines["top"].set_visible(False)
+plt.gca().spines["right"].set_visible(False)
+plt.axhline(
+    y=0.5,
+    color="gray",
+    linestyle="--",
+    linewidth=1.2,
+    alpha=0.6,
+    label="Random-ranking reference"
+)
+
+plt.legend(frameon=False)
+plt.tight_layout()
+plt.savefig(OUTPUT_PATH / "auroc_by_hop.png", dpi=300)
+plt.savefig(OUTPUT_PATH / "auroc_by_hop.pdf")
+plt.show()
+
+
+# FPR95 graph
+
+plt.figure(figsize=(9, 5))
+
+plt.plot(
+    hops, fpr95_values,
+    color="#E87C96",
+    marker="o",
+    linewidth=2.5,
+    markersize=7
+)
+
+plt.xlabel("Taxonomic Distance (Hops)", fontsize=12)
+plt.ylabel("FPR95 (%)", fontsize=12)
+plt.title("FPR95 Across Taxonomic Distances", fontsize=14, fontweight="bold")
+
+plt.xticks(hops)
+plt.ylim(0, 105)
+plt.grid(axis="y", alpha=0.15)
+
+plt.gca().spines["top"].set_visible(False)
+plt.gca().spines["right"].set_visible(False)
+
+plt.tight_layout()
+plt.savefig(OUTPUT_PATH / "fpr95_by_hop.png", dpi=300)
+plt.savefig(OUTPUT_PATH / "fpr95_by_hop.pdf")
+plt.show()
